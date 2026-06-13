@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NBA 監控</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
+header{background:#1a1d27;border-bottom:1px solid #2d3748;padding:14px 20px;font-size:18px;font-weight:600}
+main{padding:20px;max-width:900px;margin:0 auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.card{background:#1a1d27;border:1px solid #2d3748;border-radius:10px;padding:14px 16px}
+.card-label{font-size:11px;color:#718096;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+.card-val{font-size:22px;font-weight:700}
+.card-sub{font-size:12px;color:#718096;margin-top:2px}
+.score-box{background:#1a1d27;border:1px solid #2d3748;border-radius:10px;padding:20px;text-align:center;margin-bottom:20px}
+.score-main{font-size:44px;font-weight:800;letter-spacing:2px;margin:8px 0}
+.score-sub{font-size:13px;color:#68d391}
+.section{background:#1a1d27;border:1px solid #2d3748;border-radius:10px;padding:16px;margin-bottom:16px}
+.section h2{font-size:14px;font-weight:600;margin-bottom:12px;color:#a0aec0;text-transform:uppercase;letter-spacing:.5px}
+.evt{display:flex;gap:10px;padding:8px 10px;background:#0f1117;border-radius:6px;margin-bottom:6px;font-size:13px}
+.evt-time{color:#718096;min-width:56px;font-variant-numeric:tabular-nums}
+.evt-text{flex:1;white-space:pre-line}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.btn{padding:8px 16px;border-radius:7px;border:1px solid #4a5568;background:#2d3748;color:#e2e8f0;cursor:pointer;font-size:13px}
+.btn:hover{background:#4a5568}
+.btn-green{background:#276749;border-color:#2f855a;color:#c6f6d5}
+.btn-green:hover{background:#2f855a}
+.alert{padding:8px 14px;border-radius:7px;font-size:13px;margin-bottom:12px;display:none}
+.alert-ok{background:#22543d;color:#c6f6d5;border:1px solid #2f855a}
+.alert-err{background:#742a2a;color:#fed7d7;border:1px solid #9b2c2c}
+input[type=text]{background:#0f1117;border:1px solid #4a5568;color:#e2e8f0;padding:8px 12px;border-radius:7px;font-size:13px;flex:1}
+.row{display:flex;gap:8px}
+</style>
+</head>
+<body>
+<header>🏀 NBA 即時監控</header>
+<main>
+<div id="alert" class="alert"></div>
+
+{% if game %}
+<div class="score-box">
+  <div style="font-size:13px;color:#a0aec0">{{ game.away }} vs {{ game.home }}</div>
+  <div class="score-main">{{ game.away_score }} - {{ game.home_score }}</div>
+  <div class="score-sub">{{ game.status }} · Q{{ game.period }} · {{ game.arena or '' }}</div>
+</div>
+{% else %}
+<div class="score-box">
+  <div style="font-size:13px;color:#718096">今日無賽事</div>
+  <div class="score-main" style="font-size:32px;color:#4a5568">-- - --</div>
+</div>
+{% endif %}
+
+<div class="cards">
+  <div class="card">
+    <div class="card-label">總推播</div>
+    <div class="card-val">{{ total }}</div>
+  </div>
+  <div class="card">
+    <div class="card-label">上次推播</div>
+    <div class="card-val" style="font-size:15px;padding-top:4px">{{ last_push or 'N/A' }}</div>
+  </div>
+  <div class="card">
+    <div class="card-label">上次輪詢</div>
+    <div class="card-val" style="font-size:15px;padding-top:4px">{{ last_poll or 'N/A' }}</div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn btn-green" onclick="testLine()">📨 測試 LINE</button>
+  <button class="btn" onclick="location.reload()">🔄 重新整理</button>
+</div>
+<div class="row" style="margin-bottom:16px">
+  <input id="sim" type="text" placeholder="模擬推播訊息...">
+  <button class="btn" onclick="simulate()">送出</button>
+</div>
+
+<div class="section">
+  <h2>最近推播</h2>
+  {% for e in log %}
+  <div class="evt">
+    <span class="evt-time">{{ e.at }}</span>
+    <span class="evt-text">{{ e.text }}</span>
+  </div>
+  {% else %}
+  <div style="color:#718096;font-size:13px">尚無推播記錄</div>
+  {% endfor %}
+</div>
+
+{% if errors %}
+<div class="section">
+  <h2>錯誤紀錄</h2>
+  {% for e in errors %}
+  <div class="evt" style="border-left:2px solid #742a2a"><span class="evt-text" style="color:#fc8181">{{ e }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+</main>
+
+<script>
+function show(msg, ok) {
+  const el = document.getElementById('alert');
+  el.className = 'alert ' + (ok ? 'alert-ok' : 'alert-err');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display='none', 4000);
+}
+async function testLine() {
+  const r = await fetch('/test-line', {method:'POST'});
+  const d = await r.json();
+  show(d.ok ? 'LINE 推播成功！' : '推播失敗，檢查 token/to 設定', d.ok);
+}
+async function simulate() {
+  const text = document.getElementById('sim').value.trim();
+  if (!text) return show('請輸入訊息', false);
+  const r = await fetch('/simulate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text})});
+  const d = await r.json();
+  show(d.ok ? '已送出' : '失敗', d.ok);
+}
+setInterval(() => location.reload(), 30000);
+</script>
+</body>
+</html>
