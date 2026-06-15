@@ -40,9 +40,16 @@ def _clock(raw: str) -> str:
     return raw or ""
 
 
+def _safe_int(val, default=0):
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def _score_str(action: dict, game: dict) -> str:
-    hs = int(action.get("scoreHome") or game["home_score"] or 0)
-    aws = int(action.get("scoreAway") or game["away_score"] or 0)
+    hs = _safe_int(action.get("scoreHome"), game["home_score"])
+    aws = _safe_int(action.get("scoreAway"), game["away_score"])
     return f"{game['away']} {aws} - {hs} {game['home']}"
 
 

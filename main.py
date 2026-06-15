@@ -23,6 +23,7 @@ _state = {
     "last_push":    None,
     "last_poll":    None,
     "errors":       [],
+    "paused":       False,    # 是否暫停推播
 }
 
 def _add_log(text: str):
@@ -53,6 +54,7 @@ def tick():
 def _tick():
     with _lock:
         _state["last_poll"] = datetime.utcnow().strftime("%H:%M:%S UTC")
+        paused = _state["paused"]
 
     game = game_detector.get_game()
     with _lock:
@@ -68,6 +70,8 @@ def _tick():
 
     if game["status"] == "FINAL":
         _set_interval(config.POLL_NO_GAME)
+        if paused:
+            return
         # 終場只通知一次
         fid = f"{game['game_id']}_final"
         with _lock:
@@ -84,6 +88,13 @@ def _tick():
     # LIVE
     _set_interval(config.POLL_LIVE)
     events = play_parser.fetch_events(game)
+
+    if paused:
+        # 暫停期間仍標記事件為已見，避免恢復後一次補推大量舊事件
+        with _lock:
+            for evt in events:
+                _state["seen"].add(evt["id"])
+        return
 
     for evt in events:
         with _lock:
@@ -129,8 +140,16 @@ def health():
 
 @app.route("/test-line", methods=["POST"])
 def test_line():
-    ok = notifier.push("🏀 NBA 監控測試推播 — 系統正常！")
+    ok = notifier.push("🏀 NBA 監控測試推播 — 系統正常！(Telegram)")
     return jsonify({"ok": ok})
+
+
+@app.route("/toggle-pause", methods=["POST"])
+def toggle_pause():
+    with _lock:
+        _state["paused"] = not _state["paused"]
+        paused = _state["paused"]
+    return jsonify({"ok": True, "paused": paused})
 
 
 @app.route("/simulate", methods=["POST"])
